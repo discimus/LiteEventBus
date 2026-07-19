@@ -1,5 +1,7 @@
 # LiteEventBus
 
+ℹ️ Disclosure: This application was developed using AI (vibecoding).
+
 Uma biblioteca .NET leve para comunicação **Publish/Subscribe em memória**, com foco em simplicidade, baixo overhead e integração nativa com `Microsoft.Extensions.DependencyInjection`.
 
 ## Objetivo
