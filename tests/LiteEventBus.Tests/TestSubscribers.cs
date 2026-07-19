@@ -135,3 +135,21 @@ internal sealed class TransientTrackerSubscriber : IEventSubscriber<TestEvent>
         return Task.CompletedTask;
     }
 }
+
+internal sealed class ScopedDependency
+{
+    public Guid Id { get; } = Guid.NewGuid();
+}
+
+internal sealed class ScopedTestSubscriber : IEventSubscriber<TestEvent>
+{
+    public ScopedTestSubscriber(ScopedDependency dependency)
+    {
+        Dependency = dependency;
+    }
+
+    public ScopedDependency Dependency { get; }
+
+    public Task HandleAsync(TestEvent @event, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+}

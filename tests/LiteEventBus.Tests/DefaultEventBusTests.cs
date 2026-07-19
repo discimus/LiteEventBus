@@ -317,4 +317,151 @@ public class DefaultEventBusTests
 
         Assert.Equal(2, TransientTrackerSubscriber.InstanceCounter);
     }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_SubsequentSubscribersCalled()
+    {
+        var handler1 = new TestSubscriber();
+        var handler2 = new ThrowingTestSubscriber();
+        var handler3 = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler1);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler2);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler3);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var options = new PublishOptions { ContinueOnError = true };
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent(), options));
+
+        Assert.Equal(1, handler1.HandleCount);
+        Assert.Equal(1, handler3.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_ThrowsAggregateException()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var options = new PublishOptions { ContinueOnError = true };
+        var ex = await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent(), options));
+
+        Assert.Equal(2, ex.InnerExceptions.Count);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_CallbackInvoked()
+    {
+        var callbackCalled = false;
+        Exception capturedException = null!;
+        IEvent capturedEvent = null!;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = true;
+            options.OnSubscriberError = (sp, @event, ex) =>
+            {
+                callbackCalled = true;
+                capturedException = ex;
+                capturedEvent = @event;
+                return Task.CompletedTask;
+            };
+        });
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent()));
+
+        Assert.True(callbackCalled);
+        Assert.IsType<InvalidOperationException>(capturedException);
+        Assert.Equal("Test exception", capturedException.Message);
+        Assert.NotNull(capturedEvent);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_CallbackReceivesScopeProvider()
+    {
+        var providerFromCallback = null as IServiceProvider;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = true;
+            options.OnSubscriberError = (sp, @event, ex) =>
+            {
+                providerFromCallback = sp;
+                return Task.CompletedTask;
+            };
+        });
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent()));
+
+        Assert.NotNull(providerFromCallback);
+    }
+
+    [Fact]
+    public async Task PublishAsync_DefaultOptions_ContinueOnErrorFalse()
+    {
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        try
+        {
+            await eventBus.PublishAsync(new TestEvent());
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        Assert.Equal(0, handlerAfterThrow.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ScopedSubscriber_ResolvesCorrectly()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddScoped<ScopedDependency>();
+        services.AddTransient<IEventSubscriber<TestEvent>, ScopedTestSubscriber>();
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+    }
+
+    [Fact]
+    public async Task PublishAsync_ScopedSubscriber_IsNewInstancePerPublish()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddScoped<ScopedDependency>();
+        services.AddTransient<IEventSubscriber<TestEvent>, ScopedTestSubscriber>();
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+        await eventBus.PublishAsync(new TestEvent());
+    }
 }

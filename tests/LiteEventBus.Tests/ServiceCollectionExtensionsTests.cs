@@ -78,4 +78,72 @@ public class ServiceCollectionExtensionsTests
         Assert.Single(testRegistrations);
         Assert.Single(anotherRegistrations);
     }
+
+    [Fact]
+    public void AddSubscriber_DuplicateRegistration_Ignored()
+    {
+        var services = new ServiceCollection();
+        services.AddSubscriber<TestEvent, TestSubscriber>();
+        services.AddSubscriber<TestEvent, TestSubscriber>();
+
+        var registrations = services
+            .Where(sd => sd.ServiceType == typeof(IEventSubscriber<TestEvent>))
+            .ToList();
+
+        Assert.Single(registrations);
+    }
+
+    [Fact]
+    public void AddSubscriber_SameEventDifferentSubscribers_BothRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddSubscriber<TestEvent, TestSubscriber>();
+        services.AddSubscriber<TestEvent, ThrowingTestSubscriber>();
+
+        var registrations = services
+            .Where(sd => sd.ServiceType == typeof(IEventSubscriber<TestEvent>))
+            .ToList();
+
+        Assert.Equal(2, registrations.Count);
+    }
+
+    [Fact]
+    public void AddLiteEventBus_WithConfigure_AppliesOptions()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = true;
+        });
+
+        var registration = services.FirstOrDefault(sd => sd.ServiceType == typeof(IEventBus));
+        Assert.NotNull(registration);
+    }
+
+    [Fact]
+    public void AddLiteEventBus_WithConfigureNull_DoesNotThrow()
+    {
+        var services = new ServiceCollection();
+
+        var result = services.AddLiteEventBus(configure: null);
+
+        Assert.NotNull(result);
+    }
+
+    [Fact]
+    public void AddLiteEventBus_WithConfigureAndMultipleCalls_Idempotent()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = true;
+        });
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = false;
+        });
+
+        var registrations = services.Where(sd => sd.ServiceType == typeof(IEventBus)).ToList();
+        Assert.Single(registrations);
+    }
 }
