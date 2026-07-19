@@ -73,6 +73,101 @@ await eventBus.PublishAsync(
         "John Doe"));
 ```
 
+## Tratamento de erros
+
+### Comportamento padrão (fail-fast)
+
+Por padrão, a publicação é interrompida na primeira exceção. Subscribers registrados após o que falhou não executam:
+
+```csharp
+await eventBus.PublishAsync(new UserRegistered(Guid.NewGuid(), "a@b.com", "A"));
+// Se o 2º subscriber lançar exceção, o 3º não executa
+```
+
+### ContinueOnError (por chamada)
+
+Para executar todos os subscribers mesmo em caso de erro, use `PublishOptions`:
+
+```csharp
+var options = new PublishOptions { ContinueOnError = true };
+
+try
+{
+    await eventBus.PublishAsync(new UserRegistered(Guid.NewGuid(), "a@b.com", "A"), options);
+}
+catch (AggregateException ex)
+{
+    // ex.InnerExceptions contém as exceções de todos os subscribers que falharam
+    foreach (var inner in ex.InnerExceptions)
+    {
+        Console.WriteLine($"Subscriber error: {inner.Message}");
+    }
+}
+```
+
+### Configuração global
+
+Defina o comportamento padrão para todas as publicações durante o registro na DI:
+
+```csharp
+services.AddLiteEventBus(options =>
+{
+    options.DefaultContinueOnError = true;
+});
+```
+
+A configuração global é usada quando `PublishAsync` é chamado sem `PublishOptions`. O valor por chamada sempre sobrescreve o global.
+
+### Callback de erro
+
+Registre um callback para ser notificado quando um subscriber falha (útil para logging ou métricas):
+
+```csharp
+services.AddLiteEventBus(options =>
+{
+    options.DefaultContinueOnError = true;
+    options.OnSubscriberError = async (serviceProvider, @event, exception) =>
+    {
+        var logger = serviceProvider.GetRequiredService<ILogger<IEventBus>>();
+        logger.LogError(exception, "Subscriber falhou ao processar {EventType}", @event.GetType().Name);
+    };
+});
+```
+
+O callback recebe o `IServiceProvider` do escopo atual, permitindo resolver serviços scoped (loggers, etc.).
+
+## Subscribers com dependências scoped
+
+Cada chamada de `PublishAsync` cria um escopo DI, permitindo que subscribers consumam dependências scoped como `DbContext` do Entity Framework Core:
+
+```csharp
+using LiteEventBus.Abstractions;
+
+public sealed class UserRegisteredHandler : IEventSubscriber<UserRegistered>
+{
+    private readonly AppDbContext _db;
+
+    public UserRegisteredHandler(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task HandleAsync(UserRegistered @event, CancellationToken cancellationToken)
+    {
+        _db.Users.Add(new User(@event.UserId, @event.Email, @event.FullName));
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+}
+```
+
+Registro na DI:
+
+```csharp
+services.AddDbContext<AppDbContext>(...);
+services.AddLiteEventBus();
+services.AddSubscriber<UserRegistered, UserRegisteredHandler>();
+```
+
 ## API
 
 ### `IEvent`
@@ -87,20 +182,56 @@ Contrato para subscribers. Deve ser implementado por cada assinante de evento.
 
 Contrato para publicação de eventos.
 
+```csharp
+Task PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default)
+    where TEvent : IEvent;
+
+Task PublishAsync<TEvent>(TEvent @event, PublishOptions options, CancellationToken cancellationToken = default)
+    where TEvent : IEvent;
+```
+
+### `PublishOptions`
+
+Configura o comportamento de uma publicação específica.
+
+| Propriedade | Tipo | Padrão | Descrição |
+|-------------|------|--------|-----------|
+| `ContinueOnError` | `bool` | `false` | Quando `true`, todos subscribers executam mesmo em caso de erro. As exceções são coletadas e um `AggregateException` é lançado ao final. |
+
+### `EventBusOptions`
+
+Configura o comportamento global do LiteEventBus durante o registro na DI.
+
+| Propriedade | Tipo | Padrão | Descrição |
+|-------------|------|--------|-----------|
+| `DefaultContinueOnError` | `bool` | `false` | Valor global usado quando `PublishAsync` é chamado sem `PublishOptions`. |
+| `OnSubscriberError` | `Func<IServiceProvider, IEvent, Exception, Task>?` | `null` | Callback invocado quando um subscriber falha e `ContinueOnError` é `true`. |
+
 ### `IServiceCollection.AddLiteEventBus()`
 
-Registra os serviços de infraestrutura do LiteEventBus no container DI.
+```csharp
+// Registro padrão
+services.AddLiteEventBus();
+
+// Com configuração global
+services.AddLiteEventBus(options => { ... });
+```
+
+Registra `IEventBus` como singleton. É idempotente: chamadas múltiplas não criam registros duplicados.
 
 ### `IServiceCollection.AddSubscriber<TEvent, TSubscriber>()`
 
-Registra um subscriber explicitamente no container DI.
+Registra um subscriber como transient. Ignora silenciosamente registros duplicados do mesmo par `(TEvent, TSubscriber)`.
 
 ## Comportamento
 
 - Subscribers são executados **sequencialmente** na ordem de registro.
-- Se um subscriber lançar uma exceção, a publicação é interrompida imediatamente e a exceção é propagada.
+- Por padrão, a primeira exceção interrompe a publicação e é propagada imediatamente.
+- Com `ContinueOnError = true`, todos subscribers executam. Exceções são coletadas e um `AggregateException` é lançado ao final. O callback `OnSubscriberError` é invocado para cada falha.
+- Cada chamada de `PublishAsync` cria um escopo DI. Subscribers podem consumir dependências scoped (`DbContext`, `HttpContext`, etc.).
 - Subscribers são resolvidos via DI como **transient** a cada chamada de `PublishAsync`.
-- O `EventBus` é registrado como **singleton**.
+- O `IEventBus` é registrado como **singleton**.
+- `AddSubscriber` ignora registros duplicados do mesmo tipo de subscriber para o mesmo evento.
 - `ConfigureAwait(false)` é utilizado em todo código interno da biblioteca.
 
 ## Limitações
