@@ -18,6 +18,7 @@
 **/[Pp]ackages/repositories.config
 *.nuget.props
 *.nuget.targets
+nupkg/
 
 ## Visual Studio
 .vs/

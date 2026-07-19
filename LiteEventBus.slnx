@@ -3,7 +3,6 @@
     <Project Path="samples/LiteEventBus.ConsoleSample/LiteEventBus.ConsoleSample.csproj" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/LiteEventBus.Abstractions/LiteEventBus.Abstractions.csproj" />
     <Project Path="src/LiteEventBus/LiteEventBus.csproj" />
   </Folder>
   <Folder Name="/tests/">
