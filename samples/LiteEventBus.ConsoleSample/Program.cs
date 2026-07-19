@@ -26,7 +26,7 @@ Console.WriteLine("Event published successfully.");
 public sealed record UserRegistered(
     Guid UserId,
     string Email,
-    string FullName) : IEvent;
+    string FullName);
 
 public sealed class SendWelcomeEmail : IEventSubscriber<UserRegistered>
 {

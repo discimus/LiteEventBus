@@ -5,7 +5,6 @@ namespace LiteEventBus.Abstractions;
 /// </summary>
 /// <typeparam name="TEvent">The type of event this subscriber handles.</typeparam>
 public interface IEventSubscriber<in TEvent>
-    where TEvent : IEvent
 {
     /// <summary>
     /// Handles the specified event asynchronously.

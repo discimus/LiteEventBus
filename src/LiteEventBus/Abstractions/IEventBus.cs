@@ -14,8 +14,7 @@ public interface IEventBus
     /// <returns>A task that represents the asynchronous publish operation.</returns>
     Task PublishAsync<TEvent>(
         TEvent @event,
-        CancellationToken cancellationToken = default)
-        where TEvent : IEvent;
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Publishes an event to all registered subscribers with the specified options.
@@ -28,6 +27,5 @@ public interface IEventBus
     Task PublishAsync<TEvent>(
         TEvent @event,
         PublishOptions options,
-        CancellationToken cancellationToken = default)
-        where TEvent : IEvent;
+        CancellationToken cancellationToken = default);
 }

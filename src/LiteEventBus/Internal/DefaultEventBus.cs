@@ -31,7 +31,6 @@ internal sealed class DefaultEventBus : IEventBus
     public Task PublishAsync<TEvent>(
         TEvent @event,
         CancellationToken cancellationToken = default)
-        where TEvent : IEvent
     {
         return PublishAsync(@event, options: null, cancellationToken);
     }
@@ -49,7 +48,6 @@ internal sealed class DefaultEventBus : IEventBus
         TEvent @event,
         PublishOptions? options,
         CancellationToken cancellationToken = default)
-        where TEvent : IEvent
     {
         ArgumentNullException.ThrowIfNull(@event);
 
@@ -70,13 +68,23 @@ internal sealed class DefaultEventBus : IEventBus
             }
             catch (Exception ex) when (options.ContinueOnError)
             {
+                if (ex is OperationCanceledException)
+                    throw;
+
                 exceptions.Add(ex);
 
                 if (_options.OnSubscriberError is not null)
                 {
-                    await _options.OnSubscriberError
-                        .Invoke(scope.ServiceProvider, @event, ex)
-                        .ConfigureAwait(false);
+                    try
+                    {
+                        await _options.OnSubscriberError
+                            .Invoke(scope.ServiceProvider, @event, ex)
+                            .ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Swallow callback exceptions to avoid breaking the publish flow
+                    }
                 }
             }
         }

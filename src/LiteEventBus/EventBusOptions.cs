@@ -19,5 +19,5 @@ public sealed class EventBusOptions
     /// The callback receives the scope-level <see cref="IServiceProvider"/>,
     /// the event instance, and the exception.
     /// </summary>
-    public Func<IServiceProvider, IEvent, Exception, Task>? OnSubscriberError { get; set; }
+    public Func<IServiceProvider, object, Exception, Task>? OnSubscriberError { get; set; }
 }

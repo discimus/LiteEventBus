@@ -363,7 +363,7 @@ public class DefaultEventBusTests
     {
         var callbackCalled = false;
         Exception capturedException = null!;
-        IEvent capturedEvent = null!;
+        object capturedEvent = null!;
 
         var services = new ServiceCollection();
         services.AddLiteEventBus(options =>
@@ -463,5 +463,54 @@ public class DefaultEventBusTests
 
         await eventBus.PublishAsync(new TestEvent());
         await eventBus.PublishAsync(new TestEvent());
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_CallbackThrows_ContinuesPublishing()
+    {
+        var handler1 = new TestSubscriber();
+        var handler2 = new ThrowingTestSubscriber();
+        var handler3 = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = true;
+            options.OnSubscriberError = (sp, @event, ex) =>
+                throw new InvalidOperationException("Callback error");
+        });
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler1);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler2);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler3);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var ex = await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent()));
+
+        Assert.Single(ex.InnerExceptions);
+        Assert.IsType<InvalidOperationException>(ex.InnerExceptions[0]);
+        Assert.Equal("Test exception", ex.InnerExceptions[0].Message);
+        Assert.Equal(1, handler1.HandleCount);
+        Assert.Equal(1, handler3.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_CancellationStillPropagates()
+    {
+        using var cts = new CancellationTokenSource();
+        var handler = new CancellationDuringHandleSubscriber(cts);
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = true;
+        });
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(
+            () => eventBus.PublishAsync(new TestEvent(), cts.Token));
     }
 }

@@ -50,7 +50,6 @@ public static IServiceCollection AddLiteEventBus(this IServiceCollection service
 /// <param name="services">The <see cref="IServiceCollection"/> to add the subscriber to.</param>
 /// <returns>The same <see cref="IServiceCollection"/> so that additional calls can be chained.</returns>
 public static IServiceCollection AddSubscriber<TEvent, TSubscriber>(this IServiceCollection services)
-    where TEvent : IEvent
     where TSubscriber : class, IEventSubscriber<TEvent>
 {
     ArgumentNullException.ThrowIfNull(services);

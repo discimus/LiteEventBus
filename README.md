@@ -19,12 +19,10 @@ dotnet add package LiteEventBus
 ### 1. Definir um evento
 
 ```csharp
-using LiteEventBus.Abstractions;
-
 public sealed record UserRegistered(
     Guid UserId,
     string Email,
-    string FullName) : IEvent;
+    string FullName);
 ```
 
 ### 2. Criar subscribers
@@ -172,10 +170,6 @@ services.AddSubscriber<UserRegistered, UserRegisteredHandler>();
 
 ## API
 
-### `IEvent`
-
-Interface marcadora para todos os eventos.
-
 ### `IEventSubscriber<TEvent>`
 
 Contrato para subscribers. Deve ser implementado por cada assinante de evento.
@@ -185,11 +179,9 @@ Contrato para subscribers. Deve ser implementado por cada assinante de evento.
 Contrato para publicação de eventos.
 
 ```csharp
-Task PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default)
-    where TEvent : IEvent;
+Task PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default);
 
-Task PublishAsync<TEvent>(TEvent @event, PublishOptions options, CancellationToken cancellationToken = default)
-    where TEvent : IEvent;
+Task PublishAsync<TEvent>(TEvent @event, PublishOptions options, CancellationToken cancellationToken = default);
 ```
 
 ### `PublishOptions`
@@ -207,7 +199,7 @@ Configura o comportamento global do LiteEventBus durante o registro na DI.
 | Propriedade | Tipo | Padrão | Descrição |
 |-------------|------|--------|-----------|
 | `DefaultContinueOnError` | `bool` | `false` | Valor global usado quando `PublishAsync` é chamado sem `PublishOptions`. |
-| `OnSubscriberError` | `Func<IServiceProvider, IEvent, Exception, Task>?` | `null` | Callback invocado quando um subscriber falha e `ContinueOnError` é `true`. |
+| `OnSubscriberError` | `Func<IServiceProvider, object, Exception, Task>?` | `null` | Callback invocado quando um subscriber falha e `ContinueOnError` é `true`. |
 
 ### `IServiceCollection.AddLiteEventBus()`
 
