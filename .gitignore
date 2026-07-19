@@ -1,0 +1,57 @@
+## .NET
+**/[Bb]in/
+**/[Oo]bj/
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.csproj.user
+*.dbmdl
+*.jfm
+*.rsuser
+*.suo
+
+## NuGet
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nupkg
+**/[Pp]ackages/repositories.config
+*.nuget.props
+*.nuget.targets
+
+## Visual Studio
+.vs/
+*.sln.ide/
+
+## Rider
+.idea/
+*.sln.iml
+
+## VS Code
+.vscode/
+
+## macOS
+.DS_Store
+
+## Build artifacts
+[Tt]est[Rr]esults/
+[Tt]est[Rr]esults.xml
+*.trx
+[Ll]ogs/
+
+## ReSharper
+_ReSharper.*/
+*.DotSettings
+*.DotSettings.user
+
+## Environment
+*.env
+*.env.local
+
+## Temp files
+*.swp
+*.swo
+*~
+
+## opencode
+!.opencode/
