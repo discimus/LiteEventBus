@@ -64,4 +64,68 @@ public static IServiceCollection AddSubscriber<TEvent, TSubscriber>(this IServic
 
     return services;
 }
+
+/// <summary>
+/// Registers a delegate-based subscriber for a specific event type.
+/// </summary>
+/// <typeparam name="TEvent">The type of event to subscribe to.</typeparam>
+/// <param name="services">The <see cref="IServiceCollection"/> to add the subscriber to.</param>
+/// <param name="handler">A delegate that handles the event.</param>
+/// <returns>The same <see cref="IServiceCollection"/> so that additional calls can be chained.</returns>
+public static IServiceCollection AddSubscriber<TEvent>(
+    this IServiceCollection services,
+    Func<TEvent, CancellationToken, Task> handler)
+{
+    ArgumentNullException.ThrowIfNull(services);
+    ArgumentNullException.ThrowIfNull(handler);
+
+    services.AddTransient<IEventSubscriber<TEvent>>(
+        _ => new DelegateSubscriber<TEvent>(handler));
+
+    return services;
+}
+
+/// <summary>
+/// Registers a delegate-based subscriber for a specific event type.
+/// </summary>
+/// <typeparam name="TEvent">The type of event to subscribe to.</typeparam>
+/// <param name="services">The <see cref="IServiceCollection"/> to add the subscriber to.</param>
+/// <param name="handler">A delegate that handles the event asynchronously.</param>
+/// <returns>The same <see cref="IServiceCollection"/> so that additional calls can be chained.</returns>
+public static IServiceCollection AddSubscriber<TEvent>(
+    this IServiceCollection services,
+    Func<TEvent, Task> handler)
+{
+    ArgumentNullException.ThrowIfNull(services);
+    ArgumentNullException.ThrowIfNull(handler);
+
+    services.AddTransient<IEventSubscriber<TEvent>>(
+        _ => new DelegateSubscriber<TEvent>((@event, _) => handler(@event)));
+
+    return services;
+}
+
+/// <summary>
+/// Registers a delegate-based subscriber for a specific event type.
+/// </summary>
+/// <typeparam name="TEvent">The type of event to subscribe to.</typeparam>
+/// <param name="services">The <see cref="IServiceCollection"/> to add the subscriber to.</param>
+/// <param name="handler">A delegate that handles the event synchronously.</param>
+/// <returns>The same <see cref="IServiceCollection"/> so that additional calls can be chained.</returns>
+public static IServiceCollection AddSubscriber<TEvent>(
+    this IServiceCollection services,
+    Action<TEvent> handler)
+{
+    ArgumentNullException.ThrowIfNull(services);
+    ArgumentNullException.ThrowIfNull(handler);
+
+    services.AddTransient<IEventSubscriber<TEvent>>(
+        _ => new DelegateSubscriber<TEvent>((@event, _) =>
+        {
+            handler(@event);
+            return Task.CompletedTask;
+        }));
+
+    return services;
+}
 }

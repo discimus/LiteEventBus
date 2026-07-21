@@ -496,6 +496,125 @@ public class DefaultEventBusTests
     }
 
     [Fact]
+    public async Task PublishAsync_LambdaSubscriber_CallsHandler()
+    {
+        var callCount = 0;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((_, _) =>
+        {
+            callCount++;
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_LambdaSubscriber_ReceivesEvent()
+    {
+        object? receivedEvent = null;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((@event, _) =>
+        {
+            receivedEvent = @event;
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var testEvent = new TestEvent();
+        await eventBus.PublishAsync(testEvent);
+
+        Assert.Same(testEvent, receivedEvent);
+    }
+
+    [Fact]
+    public async Task PublishAsync_LambdaSubscriber_ThrowsPropagates()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((_, _) =>
+            throw new InvalidOperationException("Lambda error"));
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => eventBus.PublishAsync(new TestEvent()));
+
+        Assert.Equal("Lambda error", ex.Message);
+    }
+
+    [Fact]
+    public async Task PublishAsync_MixedClassAndLambdaSubscribers_AllCalled()
+    {
+        var classHandler = new TestSubscriber();
+        var lambdaCallCount = 0;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton<IEventSubscriber<TestEvent>>(classHandler);
+        services.AddSubscriber<TestEvent>((_, _) =>
+        {
+            lambdaCallCount++;
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(1, classHandler.HandleCount);
+        Assert.Equal(1, lambdaCallCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_FuncTaskLambda_WorksCorrectly()
+    {
+        var callCount = 0;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>(_ =>
+        {
+            callCount++;
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ActionLambda_WorksCorrectly()
+    {
+        var callCount = 0;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>(_ =>
+        {
+            callCount++;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
     public async Task PublishAsync_ContinueOnError_CancellationStillPropagates()
     {
         using var cts = new CancellationTokenSource();

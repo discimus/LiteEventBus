@@ -94,6 +94,83 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddSubscriber_WithDelegate_RegistersTransient()
+    {
+        var services = new ServiceCollection();
+        services.AddSubscriber<TestEvent>((_, _) => Task.CompletedTask);
+
+        var registration = services.FirstOrDefault(
+            sd => sd.ServiceType == typeof(IEventSubscriber<TestEvent>));
+
+        Assert.NotNull(registration);
+        Assert.Equal(ServiceLifetime.Transient, registration!.Lifetime);
+    }
+
+    [Fact]
+    public void AddSubscriber_WithDelegate_NullServices_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            ((IServiceCollection)null!).AddSubscriber<TestEvent>((_, _) => Task.CompletedTask));
+    }
+
+    [Fact]
+    public void AddSubscriber_WithDelegate_NullHandler_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ArgumentNullException>(() =>
+            services.AddSubscriber<TestEvent>((Func<TestEvent, CancellationToken, Task>)null!));
+    }
+
+    [Fact]
+    public void AddSubscriber_WithDelegate_ReturnsSameInstance()
+    {
+        var services = new ServiceCollection();
+        var result = services.AddSubscriber<TestEvent>((_, _) => Task.CompletedTask);
+        Assert.Same(services, result);
+    }
+
+    [Fact]
+    public void AddSubscriber_WithFuncTask_RegistersSuccessfully()
+    {
+        var services = new ServiceCollection();
+        services.AddSubscriber<TestEvent>(_ => Task.CompletedTask);
+
+        var registration = services.FirstOrDefault(
+            sd => sd.ServiceType == typeof(IEventSubscriber<TestEvent>));
+
+        Assert.NotNull(registration);
+        Assert.Equal(ServiceLifetime.Transient, registration!.Lifetime);
+    }
+
+    [Fact]
+    public void AddSubscriber_WithAction_RegistersSuccessfully()
+    {
+        var services = new ServiceCollection();
+        services.AddSubscriber<TestEvent>(_ => { });
+
+        var registration = services.FirstOrDefault(
+            sd => sd.ServiceType == typeof(IEventSubscriber<TestEvent>));
+
+        Assert.NotNull(registration);
+        Assert.Equal(ServiceLifetime.Transient, registration!.Lifetime);
+    }
+
+    [Fact]
+    public void AddSubscriber_DelegateMultipleCalls_EachRegisteredSeparately()
+    {
+        var services = new ServiceCollection();
+        services.AddSubscriber<TestEvent>((_, _) => Task.CompletedTask);
+        services.AddSubscriber<TestEvent>((_, _) => Task.CompletedTask);
+
+        var registrations = services
+            .Where(sd => sd.ServiceType == typeof(IEventSubscriber<TestEvent>))
+            .ToList();
+
+        Assert.Equal(2, registrations.Count);
+    }
+
+    [Fact]
     public void AddSubscriber_SameEventDifferentSubscribers_BothRegistered()
     {
         var services = new ServiceCollection();

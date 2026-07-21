@@ -6,6 +6,9 @@ var services = new ServiceCollection();
 services.AddLiteEventBus();
 services.AddSubscriber<UserRegistered, SendWelcomeEmail>();
 services.AddSubscriber<UserRegistered, LogAuditEntry>();
+
+services.AddSubscriber<UserRegistered>(t => Console.WriteLine($"[Lambda Handler] User name: {t.FullName}"));
+
 var provider = services.BuildServiceProvider();
 
 // Resolve the event bus
