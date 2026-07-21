@@ -3,15 +3,13 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <PackageId>LiteEventBus</PackageId>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Authors>Jonata Silva</Authors>
-    <Authors>LiteEventBus</Authors>
     <PackageProjectUrl>https://github.com/discimus/LiteEventBus</PackageProjectUrl>
     <RepositoryUrl>https://github.com/discimus/LiteEventBus</RepositoryUrl>
-    <Description>A lightweight .NET in-memory publish/subscribe library with zero external
-      dependencies beyond DI. Supports strongly-typed events, async subscribers, configurable error
-      handling, and DI scopes.</Description>
+    <Description>A lightweight .NET in-memory publish/subscribe library with zero external dependencies beyond DI.</Description>
     <PackageTags>pubsub;event-bus;events;messaging;di</PackageTags>
+	<PackageIcon>icon.png</PackageIcon>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/your-org/LiteEventBus</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -19,6 +17,8 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+	<None Include="icon.svg" Pack="false" PackagePath="\" />
+	<None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
