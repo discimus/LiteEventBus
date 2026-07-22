@@ -4,6 +4,10 @@
 
 Uma biblioteca .NET leve para comunicação **Publish/Subscribe em memória**, com foco em simplicidade, baixo overhead e integração nativa com `Microsoft.Extensions.DependencyInjection`.
 
+## Documentation:
+
+See the [Documentation](docs/README.md)
+
 ## Objetivo
 
 LiteEventBus permite que publicadores emitam eventos fortemente tipados e que múltiplos assinantes sejam notificados de forma assíncrona. A biblioteca **não** implementa Mediator, Command Bus, CQRS, Event Sourcing ou mensageria distribuída.
