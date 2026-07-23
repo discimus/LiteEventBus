@@ -89,6 +89,8 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddSubscriber<TEvent>(this IServiceCollection services, Func<TEvent, CancellationToken, Task> handler);
     public static IServiceCollection AddSubscriber<TEvent>(this IServiceCollection services, Func<TEvent, Task> handler);
     public static IServiceCollection AddSubscriber<TEvent>(this IServiceCollection services, Action<TEvent> handler);
+    public static IServiceCollection AddSubscriber<TEvent>(this IServiceCollection services, Func<TEvent, CancellationToken, IServiceProvider, Task> handler);
+    public static IServiceCollection AddSubscriber<TEvent>(this IServiceCollection services, Action<TEvent, CancellationToken, IServiceProvider> handler);
 }
 ```
 

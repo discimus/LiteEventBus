@@ -4,10 +4,23 @@ using Microsoft.Extensions.DependencyInjection;
 // Build the DI container
 var services = new ServiceCollection();
 services.AddLiteEventBus();
+services.AddSingleton<SendWelcomeEmail>();
 services.AddSubscriber<UserRegistered, SendWelcomeEmail>();
 services.AddSubscriber<UserRegistered, LogAuditEntry>();
 
 services.AddSubscriber<UserRegistered>(t => Console.WriteLine($"[Lambda Handler] User name: {t.FullName}"));
+services.AddSubscriber<UserRegistered>((e, ct, sp) =>
+{
+    var emailService = sp.GetRequiredService<SendWelcomeEmail>();
+    Console.WriteLine($"[DI Handler] Welcome email sent to {e.Email} via IServiceProvider");
+    return emailService.HandleAsync(e, ct);
+});
+
+services.AddSubscriber<UserRegistered>((Action<UserRegistered, CancellationToken, IServiceProvider>)((e, ct, sp) =>
+{
+    var emailService = sp.GetRequiredService<SendWelcomeEmail>();
+    Console.WriteLine($"[Sync DI] Welcome email sent to {e.Email} via sync handler");
+}));
 
 var provider = services.BuildServiceProvider();
 

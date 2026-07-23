@@ -22,6 +22,10 @@
 - Test (no build): `dotnet test --nologo --no-build`
 - Run sample:     `dotnet run --project samples/LiteEventBus.ConsoleSample`
 
+## Testing
+- Never modify existing tests — create new tests for new features
+- Every new public API addition must have matching tests in `ServiceCollectionExtensionsTests.cs` and/or `DefaultEventBusTests.cs`
+
 ## Architecture
 - `IEventBus` is Singleton
 - Subscribers are Transient (resolved via DI per `PublishAsync` call)

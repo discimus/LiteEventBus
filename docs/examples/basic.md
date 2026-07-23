@@ -114,7 +114,31 @@ services.AddSubscriber<OrderSubmitted>(@event =>
 });
 ```
 
+### With IServiceProvider
+
+For handlers that need to resolve dependencies from DI without constructor injection, use the `IServiceProvider` overload:
+
+```csharp
+services.AddSubscriber<OrderSubmitted>((e, ct, sp) =>
+{
+    var db = sp.GetRequiredService<AppDbContext>();
+    db.Orders.Add(new Order(e.OrderId, e.Total));
+    return db.SaveChangesAsync(ct);
+});
+
+// Sync variant
+services.AddSubscriber<OrderSubmitted>((Action<OrderSubmitted, CancellationToken, IServiceProvider>)((e, ct, sp) =>
+{
+    var logger = sp.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Order {Id} processed", e.OrderId);
+}));
+```
+
+The `IServiceProvider` is the **scoped provider** from the current publish, giving access to scoped services (e.g., `DbContext`) and transient dependencies.
+
 ---
+
+## Multiple Subscribers for the Same Event
 
 ## Multiple Subscribers for the Same Event
 

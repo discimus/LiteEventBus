@@ -53,6 +53,17 @@ services.AddSubscriber<OrderSubmitted>(async (@event, ct) =>
 });
 ```
 
+For lambda handlers that need to resolve dependencies from DI, use the overload with `IServiceProvider`:
+
+```csharp
+services.AddSubscriber<OrderSubmitted>((e, ct, sp) =>
+{
+    var db = sp.GetRequiredService<AppDbContext>();
+    db.Orders.Add(new Order(e.OrderId, e.Total));
+    return db.SaveChangesAsync(ct);
+});
+```
+
 ---
 
 ## Event Bus

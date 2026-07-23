@@ -79,6 +79,13 @@ services.AddSubscriber<UserRegistered, LogAuditEntry>();
 services.AddSubscriber<UserRegistered>(@event =>
     Console.WriteLine($"[Lambda] User name: {@event.FullName}"));
 
+// (Optional) Lambda with IServiceProvider — resolve services on the fly
+services.AddSubscriber<UserRegistered>((e, ct, sp) =>
+{
+    var emailService = sp.GetRequiredService<SendWelcomeEmail>();
+    return emailService.HandleAsync(e, ct);
+});
+
 var provider = services.BuildServiceProvider();
 
 // Resolve the event bus

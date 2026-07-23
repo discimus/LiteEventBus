@@ -221,6 +221,37 @@ Registra `IEventBus` como singleton. É idempotente: chamadas múltiplas não cr
 
 Registra um subscriber como transient. Ignora silenciosamente registros duplicados do mesmo par `(TEvent, TSubscriber)`.
 
+### `IServiceCollection.AddSubscriber<TEvent>(handler)`
+
+Registra um subscriber lambda como transient. Cinco overloads aceitam diferentes assinaturas:
+
+```csharp
+// Sync sem cancellation token
+services.AddSubscriber<UserRegistered>(e => Console.WriteLine(e.FullName));
+
+// Async sem cancellation token
+services.AddSubscriber<UserRegistered>(e => Task.CompletedTask);
+
+// Async com cancellation token
+services.AddSubscriber<UserRegistered>((e, ct) => Task.CompletedTask);
+
+// Async com cancellation token e IServiceProvider escoped
+services.AddSubscriber<UserRegistered>((e, ct, sp) =>
+{
+    var svc = sp.GetRequiredService<MeuServico>();
+    return svc.HandleAsync(e, ct);
+});
+
+// Sync com cancellation token e IServiceProvider escoped
+services.AddSubscriber<UserRegistered>((Action<UserRegistered, CancellationToken, IServiceProvider>)((e, ct, sp) =>
+{
+    var svc = sp.GetRequiredService<MeuServico>();
+    svc.Handle(e);
+}));
+```
+
+Overloads lambda **não** deduplicam — cada chamada registra um novo subscriber.
+
 ## Comportamento
 
 - Subscribers são executados **sequencialmente** na ordem de registro.

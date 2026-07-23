@@ -182,7 +182,7 @@ public static IServiceCollection AddSubscriber<TEvent, TSubscriber>(
 
 #### `AddSubscriber<TEvent>` (delegate overloads)
 
-Registers a lambda-based subscriber as **transient**. Three overloads accept different delegate signatures:
+Registers a lambda-based subscriber as **transient**. Five overloads accept different delegate signatures:
 
 ```csharp
 // Full async with cancellation token
@@ -199,9 +199,30 @@ public static IServiceCollection AddSubscriber<TEvent>(
 public static IServiceCollection AddSubscriber<TEvent>(
     this IServiceCollection services,
     Action<TEvent> handler);
+
+// Async with cancellation token and scoped IServiceProvider
+public static IServiceCollection AddSubscriber<TEvent>(
+    this IServiceCollection services,
+    Func<TEvent, CancellationToken, IServiceProvider, Task> handler);
+
+// Sync with cancellation token and scoped IServiceProvider
+public static IServiceCollection AddSubscriber<TEvent>(
+    this IServiceCollection services,
+    Action<TEvent, CancellationToken, IServiceProvider> handler);
 ```
 
 **No deduplication:** Each call registers a new subscriber. The same delegate registered twice will be invoked twice per publish.
+
+The `IServiceProvider` overloads receive the **scoped provider** from the current publish, enabling resolution of scoped and transient dependencies without constructor injection:
+
+```csharp
+services.AddSubscriber<OrderSubmitted>((e, ct, sp) =>
+{
+    var db = sp.GetRequiredService<AppDbContext>();
+    db.Orders.Add(new Order(e.OrderId, e.Total));
+    return db.SaveChangesAsync(ct);
+});
+```
 
 **Exceptions:**
 

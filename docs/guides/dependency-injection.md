@@ -163,6 +163,30 @@ services.AddSubscriber<OrderSubmitted>(@event => Console.WriteLine("A"));
 
 ---
 
+## Resolving Dependencies via IServiceProvider
+
+When you need to resolve dependencies inside a lambda subscriber, use the `(e, ct, sp)` overload. The `sp` is the **scoped** `IServiceProvider` from the current publish:
+
+```csharp
+services.AddSubscriber<OrderSubmitted>((e, ct, sp) =>
+{
+    var db = sp.GetRequiredService<AppDbContext>();
+    db.Orders.Add(new Order(e.OrderId, e.Total));
+    return db.SaveChangesAsync(ct);
+});
+
+// Sync variant
+services.AddSubscriber<OrderSubmitted>((Action<OrderSubmitted, CancellationToken, IServiceProvider>)((e, ct, sp) =>
+{
+    var logger = sp.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Order {Id} processed", e.OrderId);
+}));
+```
+
+This is an alternative to constructor injection — useful for simple handlers where creating a dedicated class feels like overkill.
+
+---
+
 ## Best Practices
 
 1. **Register `IEventBus` once.** `AddLiteEventBus` is idempotent.
