@@ -502,7 +502,7 @@ public class DefaultEventBusTests
 
         var services = new ServiceCollection();
         services.AddLiteEventBus();
-        services.AddSubscriber<TestEvent>((_, _) =>
+        services.AddSubscriber<TestEvent>((TestEvent _, CancellationToken _) =>
         {
             callCount++;
             return Task.CompletedTask;
@@ -522,7 +522,7 @@ public class DefaultEventBusTests
 
         var services = new ServiceCollection();
         services.AddLiteEventBus();
-        services.AddSubscriber<TestEvent>((@event, _) =>
+        services.AddSubscriber<TestEvent>((TestEvent @event, CancellationToken _) =>
         {
             receivedEvent = @event;
             return Task.CompletedTask;
@@ -541,7 +541,7 @@ public class DefaultEventBusTests
     {
         var services = new ServiceCollection();
         services.AddLiteEventBus();
-        services.AddSubscriber<TestEvent>((_, _) =>
+        services.AddSubscriber<TestEvent>((TestEvent _, CancellationToken _) =>
             throw new InvalidOperationException("Lambda error"));
         var provider = services.BuildServiceProvider();
         var eventBus = provider.GetRequiredService<IEventBus>();
@@ -561,7 +561,7 @@ public class DefaultEventBusTests
         var services = new ServiceCollection();
         services.AddLiteEventBus();
         services.AddSingleton<IEventSubscriber<TestEvent>>(classHandler);
-        services.AddSubscriber<TestEvent>((_, _) =>
+        services.AddSubscriber<TestEvent>((TestEvent _, CancellationToken _) =>
         {
             lambdaCallCount++;
             return Task.CompletedTask;
@@ -631,5 +631,343 @@ public class DefaultEventBusTests
 
         await Assert.ThrowsAsync<TaskCanceledException>(
             () => eventBus.PublishAsync(new TestEvent(), cts.Token));
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_ResolvesService()
+    {
+        TestEvent? receivedEvent = null;
+        CancellationToken? receivedCt = null;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton(new ScopedDependency());
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            var dep = sp.GetRequiredService<ScopedDependency>();
+            Assert.NotNull(dep);
+            receivedEvent = e;
+            receivedCt = ct;
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        using var cts = new CancellationTokenSource();
+        var testEvent = new TestEvent();
+        await eventBus.PublishAsync(testEvent, cts.Token);
+
+        Assert.Same(testEvent, receivedEvent);
+        Assert.Equal(cts.Token, receivedCt);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_ScopedServicePerPublish()
+    {
+        var capturedIds = new List<Guid>();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddScoped<ScopedDependency>();
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            var dep = sp.GetRequiredService<ScopedDependency>();
+            capturedIds.Add(dep.Id);
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(2, capturedIds.Count);
+        Assert.NotEqual(capturedIds[0], capturedIds[1]);
+    }
+
+    [Fact]
+    public async Task PublishAsync_MixedClassLambdaServiceProviderSubscribers_AllCalled()
+    {
+        var classHandler = new TestSubscriber();
+        var lambdaCallCount = 0;
+        var spCallCount = 0;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton(new ScopedDependency());
+        services.AddSingleton<IEventSubscriber<TestEvent>>(classHandler);
+        services.AddSubscriber<TestEvent>((TestEvent _, CancellationToken _) =>
+        {
+            lambdaCallCount++;
+            return Task.CompletedTask;
+        });
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            var dep = sp.GetRequiredService<ScopedDependency>();
+            Assert.NotNull(dep);
+            spCallCount++;
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(1, classHandler.HandleCount);
+        Assert.Equal(1, lambdaCallCount);
+        Assert.Equal(1, spCallCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_Throws_SubsequentNotCalled()
+    {
+        var handler1 = new TestSubscriber();
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler1);
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+            throw new InvalidOperationException("SP error"));
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        try
+        {
+            await eventBus.PublishAsync(new TestEvent());
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        Assert.Equal(1, handler1.HandleCount);
+        Assert.Equal(0, handlerAfterThrow.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_SyncAction_ResolvesService()
+    {
+        var callCount = 0;
+        CancellationToken? receivedCt = null;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton(new ScopedDependency());
+        services.AddSubscriber<TestEvent>((Action<TestEvent, CancellationToken, IServiceProvider>)((e, ct, sp) =>
+        {
+            var dep = sp.GetRequiredService<ScopedDependency>();
+            Assert.NotNull(dep);
+            callCount++;
+            receivedCt = ct;
+        }));
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        using var cts = new CancellationTokenSource();
+        await eventBus.PublishAsync(new TestEvent(), cts.Token);
+
+        Assert.Equal(1, callCount);
+        Assert.Equal(cts.Token, receivedCt);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_ContinueOnError_SubsequentCalled()
+    {
+        var handler1 = new TestSubscriber();
+        var throwingCalled = false;
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler1);
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            throwingCalled = true;
+            throw new InvalidOperationException("SP error");
+        });
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var options = new PublishOptions { ContinueOnError = true };
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent(), options));
+
+        Assert.Equal(1, handler1.HandleCount);
+        Assert.True(throwingCalled);
+        Assert.Equal(1, handlerAfterThrow.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_ContinueOnError_ThrowsAggregateException()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+            throw new InvalidOperationException("SP error 1"));
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+            throw new InvalidOperationException("SP error 2"));
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var options = new PublishOptions { ContinueOnError = true };
+        var ex = await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent(), options));
+
+        Assert.Equal(2, ex.InnerExceptions.Count);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_ContinueOnError_CallbackInvoked()
+    {
+        var callbackCalled = false;
+        Exception capturedException = null!;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(options =>
+        {
+            options.DefaultContinueOnError = true;
+            options.OnSubscriberError = (sp, @event, ex) =>
+            {
+                callbackCalled = true;
+                capturedException = ex;
+                return Task.CompletedTask;
+            };
+        });
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+            throw new InvalidOperationException("SP error"));
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent()));
+
+        Assert.True(callbackCalled);
+        Assert.IsType<InvalidOperationException>(capturedException);
+        Assert.Equal("SP error", capturedException.Message);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_CancelledToken_Throws()
+    {
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => eventBus.PublishAsync(new TestEvent(), cts.Token));
+    }
+
+    [Fact]
+    public async Task PublishAsync_MultipleServiceProviderSubscribers_AllCalled()
+    {
+        var callCount1 = 0;
+        var callCount2 = 0;
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            callCount1++;
+            return Task.CompletedTask;
+        });
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            callCount2++;
+            return Task.CompletedTask;
+        });
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(1, callCount1);
+        Assert.Equal(1, callCount2);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_ExecutionOrder()
+    {
+        var callOrder = new List<int>();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new OrderedTestSubscriber(1, callOrder));
+        services.AddSubscriber<TestEvent>((e, ct, sp) =>
+        {
+            callOrder.Add(2);
+            return Task.CompletedTask;
+        });
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new OrderedTestSubscriber(3, callOrder));
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal([1, 2, 3], callOrder);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_SyncAction_Throws_SubsequentNotCalled()
+    {
+        var throwingCalled = false;
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((Action<TestEvent, CancellationToken, IServiceProvider>)((e, ct, sp) =>
+        {
+            throwingCalled = true;
+            throw new InvalidOperationException("Sync SP error");
+        }));
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        try
+        {
+            await eventBus.PublishAsync(new TestEvent());
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        Assert.True(throwingCalled);
+        Assert.Equal(0, handlerAfterThrow.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ServiceProviderSubscriber_SyncAction_ContinueOnError_SubsequentCalled()
+    {
+        var throwingCalled = false;
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSubscriber<TestEvent>((Action<TestEvent, CancellationToken, IServiceProvider>)((e, ct, sp) =>
+        {
+            throwingCalled = true;
+            throw new InvalidOperationException("Sync SP error");
+        }));
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var options = new PublishOptions { ContinueOnError = true };
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent(), options));
+
+        Assert.True(throwingCalled);
+        Assert.Equal(1, handlerAfterThrow.HandleCount);
     }
 }

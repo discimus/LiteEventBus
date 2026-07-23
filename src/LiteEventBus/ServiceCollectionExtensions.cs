@@ -128,4 +128,51 @@ public static IServiceCollection AddSubscriber<TEvent>(
 
     return services;
 }
+
+/// <summary>
+/// Registers a delegate-based subscriber for a specific event type with access to the
+/// scoped <see cref="IServiceProvider"/> to resolve dependencies.
+/// </summary>
+/// <typeparam name="TEvent">The type of event to subscribe to.</typeparam>
+/// <param name="services">The <see cref="IServiceCollection"/> to add the subscriber to.</param>
+/// <param name="handler">A delegate that handles the event asynchronously, receiving the event, a <see cref="CancellationToken"/>, and the scoped <see cref="IServiceProvider"/>.</param>
+/// <returns>The same <see cref="IServiceCollection"/> so that additional calls can be chained.</returns>
+public static IServiceCollection AddSubscriber<TEvent>(
+    this IServiceCollection services,
+    Func<TEvent, CancellationToken, IServiceProvider, Task> handler)
+{
+    ArgumentNullException.ThrowIfNull(services);
+    ArgumentNullException.ThrowIfNull(handler);
+
+    services.AddTransient<IEventSubscriber<TEvent>>(
+        sp => new DelegateSubscriber<TEvent>(
+            (@event, ct) => handler(@event, ct, sp)));
+
+    return services;
+}
+
+/// <summary>
+/// Registers a delegate-based subscriber for a specific event type with access to the
+/// scoped <see cref="IServiceProvider"/> to resolve dependencies.
+/// </summary>
+/// <typeparam name="TEvent">The type of event to subscribe to.</typeparam>
+/// <param name="services">The <see cref="IServiceCollection"/> to add the subscriber to.</param>
+/// <param name="handler">A delegate that handles the event synchronously, receiving the event, a <see cref="CancellationToken"/>, and the scoped <see cref="IServiceProvider"/>.</param>
+/// <returns>The same <see cref="IServiceCollection"/> so that additional calls can be chained.</returns>
+public static IServiceCollection AddSubscriber<TEvent>(
+    this IServiceCollection services,
+    Action<TEvent, CancellationToken, IServiceProvider> handler)
+{
+    ArgumentNullException.ThrowIfNull(services);
+    ArgumentNullException.ThrowIfNull(handler);
+
+    services.AddTransient<IEventSubscriber<TEvent>>(
+        sp => new DelegateSubscriber<TEvent>((@event, ct) =>
+        {
+            handler(@event, ct, sp);
+            return Task.CompletedTask;
+        }));
+
+    return services;
+}
 }

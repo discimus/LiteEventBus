@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <PackageId>LiteEventBus</PackageId>
-    <Version>0.3.3</Version>
+    <Version>0.4.0</Version>
     <Authors>Jonata Silva</Authors>
     <PackageProjectUrl>https://github.com/discimus/LiteEventBus</PackageProjectUrl>
     <RepositoryUrl>https://github.com/discimus/LiteEventBus</RepositoryUrl>
