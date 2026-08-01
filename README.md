@@ -6,7 +6,7 @@ Uma biblioteca .NET leve para comunicação **Publish/Subscribe em memória**, c
 
 ## Documentation:
 
-For detailed guides, examples and API documentation, see the [Documentation](docs/README.md)
+For detailed guides, examples and API documentation, see the [Documentation](https://github.com/discimus/LiteEventBus/tree/main/docs)
 
 ## Objetivo
 
