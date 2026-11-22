@@ -51,12 +51,12 @@ internal sealed class DefaultEventBus : IEventBus
     {
         ArgumentNullException.ThrowIfNull(@event);
 
+        var continueOnError = options?.ContinueOnError ?? _options.DefaultContinueOnError;
+
         using var scope = _scopeFactory.CreateScope();
         var subscribers = scope.ServiceProvider.GetRequiredService<IEnumerable<IEventSubscriber<TEvent>>>();
 
-        options ??= new PublishOptions { ContinueOnError = _options.DefaultContinueOnError };
-
-        var exceptions = new List<Exception>();
+        List<Exception>? exceptions = null;
 
         foreach (var subscriber in subscribers)
         {
@@ -66,11 +66,13 @@ internal sealed class DefaultEventBus : IEventBus
             {
                 await subscriber.HandleAsync(@event, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex) when (options.ContinueOnError)
+            catch (OperationCanceledException)
             {
-                if (ex is OperationCanceledException)
-                    throw;
-
+                throw;
+            }
+            catch (Exception ex) when (continueOnError)
+            {
+                exceptions ??= [];
                 exceptions.Add(ex);
 
                 if (_options.OnSubscriberError is not null)
@@ -89,7 +91,7 @@ internal sealed class DefaultEventBus : IEventBus
             }
         }
 
-        if (exceptions.Count > 0)
+        if (exceptions is { Count: > 0 })
         {
             throw new AggregateException(exceptions);
         }

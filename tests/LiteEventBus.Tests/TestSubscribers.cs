@@ -114,26 +114,25 @@ internal sealed class CancellationTokenCheckingSubscriber : IEventSubscriber<Tes
     }
 }
 
+internal sealed class InstanceTracker
+{
+    private int _count;
+    public int Count => _count;
+    public void Increment() => Interlocked.Increment(ref _count);
+}
+
 internal sealed class TransientTrackerSubscriber : IEventSubscriber<TestEvent>
 {
-    private static int _instanceCounter;
+    private readonly InstanceTracker _tracker;
 
-    public static int InstanceCounter => _instanceCounter;
-
-    public TransientTrackerSubscriber()
+    public TransientTrackerSubscriber(InstanceTracker tracker)
     {
-        Interlocked.Increment(ref _instanceCounter);
-    }
-
-    public static void Reset()
-    {
-        _instanceCounter = 0;
+        _tracker = tracker;
+        _tracker.Increment();
     }
 
     public Task HandleAsync(TestEvent @event, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
+        => Task.CompletedTask;
 }
 
 internal sealed class ScopedDependency

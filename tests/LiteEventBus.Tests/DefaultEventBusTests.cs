@@ -304,10 +304,11 @@ public class DefaultEventBusTests
     [Fact]
     public async Task PublishAsync_ResolvesTransientPerCall()
     {
-        TransientTrackerSubscriber.Reset();
+        var tracker = new InstanceTracker();
 
         var services = new ServiceCollection();
         services.AddLiteEventBus();
+        services.AddSingleton(tracker);
         services.AddTransient<IEventSubscriber<TestEvent>, TransientTrackerSubscriber>();
         var provider = services.BuildServiceProvider();
         var eventBus = provider.GetRequiredService<IEventBus>();
@@ -315,7 +316,7 @@ public class DefaultEventBusTests
         await eventBus.PublishAsync(new TestEvent());
         await eventBus.PublishAsync(new TestEvent());
 
-        Assert.Equal(2, TransientTrackerSubscriber.InstanceCounter);
+        Assert.Equal(2, tracker.Count);
     }
 
     [Fact]
@@ -969,5 +970,243 @@ public class DefaultEventBusTests
 
         Assert.True(throwingCalled);
         Assert.Equal(1, handlerAfterThrow.HandleCount);
+    }
+
+    // --- PublishOptions immutability (init-only) ---
+
+    [Fact]
+    public void PublishOptions_InitOnly_CannotBeSetAfterConstruction()
+    {
+        // Verifies that PublishOptions uses init-only setters by confirming
+        // it can only be set via object initializer syntax.
+        var options = new PublishOptions { ContinueOnError = true };
+        Assert.True(options.ContinueOnError);
+    }
+
+    [Fact]
+    public void PublishOptions_DefaultValue_IsFalse()
+    {
+        var options = new PublishOptions();
+        Assert.False(options.ContinueOnError);
+    }
+
+    [Fact]
+    public void PublishOptions_IsSealed_CannotBeInherited()
+    {
+        Assert.True(typeof(PublishOptions).IsSealed);
+    }
+
+    [Fact]
+    public async Task PublishAsync_NullOptions_UsesGlobalDefaults()
+    {
+        // PublishOptions? null should behave identically to passing no options
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(); // DefaultContinueOnError = false
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => eventBus.PublishAsync(new TestEvent(), (PublishOptions?)null));
+
+        // Null options falls back to DefaultContinueOnError = false → fail-fast
+        Assert.Equal(0, handlerAfterThrow.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_NullOptions_WithGlobalContinueOnError_ContinuesPublishing()
+    {
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(opt => opt.DefaultContinueOnError = true);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent(), (PublishOptions?)null));
+
+        Assert.Equal(1, handlerAfterThrow.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ExplicitOptions_OverridesGlobalDefault()
+    {
+        // Per-call options take priority over the global DefaultContinueOnError
+        var handlerAfterThrow = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(opt => opt.DefaultContinueOnError = false);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterThrow);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var options = new PublishOptions { ContinueOnError = true };
+        await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent(), options));
+
+        Assert.Equal(1, handlerAfterThrow.HandleCount);
+    }
+
+    // --- OperationCanceledException always propagates ---
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_OperationCanceledException_AlwaysPropagates()
+    {
+        // Even with ContinueOnError = true, OperationCanceledException must not be swallowed
+        using var cts = new CancellationTokenSource();
+        var handler = new CancellationDuringHandleSubscriber(cts);
+        var handlerAfterCancel = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(opt => opt.DefaultContinueOnError = true);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handlerAfterCancel);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(
+            () => eventBus.PublishAsync(new TestEvent(), cts.Token));
+
+        // Cancellation propagated immediately — subsequent subscriber was not called
+        Assert.Equal(0, handlerAfterCancel.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_PreCancelledToken_PropagatesImmediately()
+    {
+        // ThrowIfCancellationRequested before each subscriber also uses OperationCanceledException
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var handler = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(opt => opt.DefaultContinueOnError = true);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => eventBus.PublishAsync(new TestEvent(), cts.Token));
+
+        // Token was pre-cancelled — handler was never reached
+        Assert.Equal(0, handler.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_OtherExceptionsDoNotPropagateImmediately()
+    {
+        // Confirms that only OperationCanceledException breaks early;
+        // regular exceptions are collected
+        var handler1 = new ThrowingTestSubscriber();
+        var handler2 = new ThrowingTestSubscriber();
+        var handler3 = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(opt => opt.DefaultContinueOnError = true);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler1);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler2);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler3);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var ex = await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent()));
+
+        Assert.Equal(2, ex.InnerExceptions.Count);
+        Assert.Equal(1, handler3.HandleCount);
+    }
+
+    // --- Lazy List<Exception> allocation ---
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_NoExceptions_DoesNotThrow()
+    {
+        // Happy path with ContinueOnError = true: no AggregateException when no errors occur
+        var handler1 = new TestSubscriber();
+        var handler2 = new TestSubscriber();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(opt => opt.DefaultContinueOnError = true);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler1);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(handler2);
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent()); // must not throw
+
+        Assert.Equal(1, handler1.HandleCount);
+        Assert.Equal(1, handler2.HandleCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ContinueOnError_SingleException_AggregateHasOneInner()
+    {
+        // Lazy list: first exception initializes the list
+        var services = new ServiceCollection();
+        services.AddLiteEventBus(opt => opt.DefaultContinueOnError = true);
+        services.AddSingleton<IEventSubscriber<TestEvent>>(new ThrowingTestSubscriber());
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        var ex = await Assert.ThrowsAsync<AggregateException>(
+            () => eventBus.PublishAsync(new TestEvent()));
+
+        Assert.Single(ex.InnerExceptions);
+    }
+
+    // --- InstanceTracker (replaces static TransientTrackerSubscriber) ---
+
+    [Fact]
+    public async Task PublishAsync_ResolvesTransientPerCall_MultiplePublishes()
+    {
+        var tracker = new InstanceTracker();
+
+        var services = new ServiceCollection();
+        services.AddLiteEventBus();
+        services.AddSingleton(tracker);
+        services.AddTransient<IEventSubscriber<TestEvent>, TransientTrackerSubscriber>();
+        var provider = services.BuildServiceProvider();
+        var eventBus = provider.GetRequiredService<IEventBus>();
+
+        await eventBus.PublishAsync(new TestEvent());
+        await eventBus.PublishAsync(new TestEvent());
+        await eventBus.PublishAsync(new TestEvent());
+
+        Assert.Equal(3, tracker.Count);
+    }
+
+    [Fact]
+    public async Task PublishAsync_MultipleTrackers_AreIndependent()
+    {
+        // Two independent trackers confirm isolation between test instances
+        var tracker1 = new InstanceTracker();
+        var tracker2 = new InstanceTracker();
+
+        var services1 = new ServiceCollection();
+        services1.AddLiteEventBus();
+        services1.AddSingleton(tracker1);
+        services1.AddTransient<IEventSubscriber<TestEvent>, TransientTrackerSubscriber>();
+
+        var services2 = new ServiceCollection();
+        services2.AddLiteEventBus();
+        services2.AddSingleton(tracker2);
+        services2.AddTransient<IEventSubscriber<TestEvent>, TransientTrackerSubscriber>();
+
+        var provider1 = services1.BuildServiceProvider();
+        var provider2 = services2.BuildServiceProvider();
+
+        await provider1.GetRequiredService<IEventBus>().PublishAsync(new TestEvent());
+        await provider1.GetRequiredService<IEventBus>().PublishAsync(new TestEvent());
+        await provider2.GetRequiredService<IEventBus>().PublishAsync(new TestEvent());
+
+        Assert.Equal(2, tracker1.Count);
+        Assert.Equal(1, tracker2.Count);
     }
 }

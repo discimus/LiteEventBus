@@ -338,3 +338,44 @@ public class ServiceCollectionExtensionsTests
         Assert.Equal(2, registrations.Count);
     }
 }
+
+public class PublishOptionsTests
+{
+    [Fact]
+    public void PublishOptions_IsSealed()
+    {
+        Assert.True(typeof(PublishOptions).IsSealed);
+    }
+
+    [Fact]
+    public void PublishOptions_DefaultContinueOnError_IsFalse()
+    {
+        var options = new PublishOptions();
+        Assert.False(options.ContinueOnError);
+    }
+
+    [Fact]
+    public void PublishOptions_InitializerSyntax_SetsValue()
+    {
+        var options = new PublishOptions { ContinueOnError = true };
+        Assert.True(options.ContinueOnError);
+    }
+
+    [Fact]
+    public void PublishOptions_ContinueOnError_IsInitOnly()
+    {
+        // Verifies that ContinueOnError is init-only (not settable after construction)
+        // by checking the property's set method is decorated with IsExternalInit modifier.
+        var prop = typeof(PublishOptions).GetProperty(nameof(PublishOptions.ContinueOnError))!;
+        var setter = prop.SetMethod;
+
+        Assert.NotNull(setter);
+
+        // init-only setters have a ReturnParameter with IsExternalInit modifier
+        var isInitOnly = setter!.ReturnParameter
+            .GetRequiredCustomModifiers()
+            .Any(m => m.FullName == "System.Runtime.CompilerServices.IsExternalInit");
+
+        Assert.True(isInitOnly);
+    }
+}
